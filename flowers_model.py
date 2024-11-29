@@ -20,6 +20,7 @@ train_images = []
 
 size = (64, 64)
 
+folders = [folder for folder in os.listdir(data) if os.path.isdir(os.path.join(data, folder))]
 print(f"Clases encontradas: {folders}")
 
 for folder in folders:
@@ -34,8 +35,8 @@ for folder in folders:
                 continue
             img = cv2.resize(img, size)
             train_images.append(img)
-            train_labels.append(folders.index(folder))  # Usar índices como etiquetas
-
+            train_labels.append(folders.index(folder))  
+            
 if not train_images:
     raise ValueError("No se encontraron imágenes procesadas. Verifica las rutas y el contenido del dataset.")
 
