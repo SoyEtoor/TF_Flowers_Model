@@ -4,3 +4,4 @@
 #protobuf===3.9.2
 opencv-python-headless
 pandas
+scikit-learn
