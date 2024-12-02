@@ -79,7 +79,7 @@ def load_and_preprocess_image(img_path):
     return img_array
 
 # Cargar y usar el modelo guardado para predicciones
-loaded_model = tf.keras.models.load_model(model_save_path)
+loaded_model = tf.keras.models.load_model(serving_model_path)
 img_path = 'rosa.jpg'  # Cambia esto a la ruta de tu imagen
 img_array = load_and_preprocess_image(img_path)
 predictions = loaded_model.predict(img_array)
