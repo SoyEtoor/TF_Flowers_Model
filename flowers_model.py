@@ -62,10 +62,10 @@ history = model.fit(
 loss, accuracy = model.evaluate(validation_generator)
 print(f'Loss: {loss}, Accuracy: {accuracy}')
 
-# Guardar el modelo entrenado
-model_save_path = "flowers-model"
-model.save(model_save_path)
-print(f"Modelo guardado en {model_save_path}")
+# Guardar el modelo en un formato compatible con TensorFlow Serving
+serving_model_path = os.path.join("flowers-model", "1")
+tf.saved_model.save(model, serving_model_path)
+print(f"Modelo guardado en formato TensorFlow Serving en {serving_model_path}")
 
 # Predicción de una nueva imagen
 import numpy as np
