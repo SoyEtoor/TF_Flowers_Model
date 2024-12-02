@@ -58,9 +58,16 @@ history = model.fit(
     epochs=epochs
 )
 
+# Evaluar el modelo
 loss, accuracy = model.evaluate(validation_generator)
 print(f'Loss: {loss}, Accuracy: {accuracy}')
 
+# Guardar el modelo entrenado
+model_save_path = "flowers-model"
+model.save(model_save_path)
+print(f"Modelo guardado en {model_save_path}")
+
+# Predicción de una nueva imagen
 import numpy as np
 from tensorflow.keras.preprocessing import image
 
@@ -71,8 +78,10 @@ def load_and_preprocess_image(img_path):
     img_array = img_array / 255.0  # Normalizar
     return img_array
 
+# Cargar y usar el modelo guardado para predicciones
+loaded_model = tf.keras.models.load_model(model_save_path)
 img_path = 'rosa.jpg'  # Cambia esto a la ruta de tu imagen
 img_array = load_and_preprocess_image(img_path)
-predictions = model.predict(img_array)
+predictions = loaded_model.predict(img_array)
 predicted_class = np.argmax(predictions)
 print(f'Predicted class: {predicted_class}')
