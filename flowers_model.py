@@ -1,14 +1,13 @@
-from sklearn.model_selection import train_test_split
-from tensorflow.keras.callbacks import EarlyStopping
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow import keras
 import tensorflow as tf
-import pathlib
+import matplotlib.pyplot as plt
+import numpy as np
 import cv2
 import os
-import numpy as np
-import matplotlib.pyplot as plt
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.optimizers import Adam
+from tensorflow import keras
+import pathlib
 
 # Descargar y descomprimir el dataset
 dataset = "https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz"
@@ -25,13 +24,11 @@ size = (128, 128)  # Aumentamos la resolución para MobileNetV2
 
 for folder in folders:
     folder_path = os.path.join(data, folder)
-    print(f"Procesando carpeta: {folder}")
     for file in os.listdir(folder_path):
         if file.endswith("jpg"):
             image_path = os.path.join(folder_path, file)
             img = cv2.imread(image_path)
             if img is None:
-                print(f"Advertencia: No se pudo leer la imagen {image_path}.")
                 continue
             img = cv2.resize(img, size)
             train_images.append(img)
@@ -58,10 +55,83 @@ data_gen = ImageDataGenerator(
     shear_range=0.2,
     zoom_range=0.2,
     horizontal_flip=True,
+    brightness_range=[0.8,1.2],
     fill_mode='nearest'
 )
 
 train_gen = data_gen.flow(train_images, train_labels, batch_size=32)
+
+# Construir modelo (Transfer Learning con MobileNetV2)
+base_model = tf.keras.applications.MobileNetV2(input_shape=(128, 128, 3), include_top=False, weights='imagenet')
+base_model.trainable = False  # Congela las capas base
+
+model = keras.Sequential([
+    base_model,
+    keras.layers.GlobalAveragePooling2D(),
+    keras.layers.Dropout(0.5),  # Regularización para evitar overfitting
+    keras.layers.Dense(256, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001)),
+    keras.layers.Dropout(0.5),
+    keras.layers.Dense(len(folders), activation='softmax')
+])
+
+model.compile(optimizer=Adam(learning_rate=0.0001),
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+
+# Callbacks para el entrenamiento
+early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+model_checkpoint = ModelCheckpoint('best_model.h5', save_best_only=True, monitor='val_accuracy', mode='max')
+
+# Entrenar modelo
+history = model.fit(
+    train_gen,
+    validation_data=(val_images, val_labels),
+    epochs=50,
+    callbacks=[early_stopping, model_checkpoint]
+)
+
+# Cargar el mejor modelo
+model.load_weights('best_model.h5')
+
+# Guardar modelo
+export_path = 'flowers-model/1/'
+os.makedirs(os.path.dirname(export_path), exist_ok=True)
+tf.saved_model.save(model, os.path.join('./', export_path))
+
+print("Modelo guardado correctamente.")
+
+# Función para predecir imágenes
+def predict_image(model, image_path):
+    img = cv2.imread(image_path)
+    if img is None:
+        raise ValueError(f"No se pudo leer la imagen en {image_path}")
+    img = cv2.resize(img, size)
+    img = img.astype('float32') / 255.0
+    img = np.expand_dims(img, axis=0)
+    pred = model.predict(img)
+    predicted_class = np.argmax(pred)
+    confidence = np.max(pred)
+    return predicted_class, confidence
+
+# Probar predicción
+sample_image = os.path.join(data, folders[0], os.listdir(os.path.join(data, folders[0]))[0])
+predicted_class, confidence = predict_image(model, sample_image)
+print(f"Predicción: Clase {folders[predicted_class]}, Confianza: {confidence:.2f}")
+
+# Visualizar historia de entrenamiento
+plt.figure(figsize=(12, 4))
+plt.subplot(1, 2, 1)
+plt.plot(history.history['accuracy'], label='Entrenamiento')
+plt.plot(history.history['val_accuracy'], label='Validación')
+plt.title('Precisión del Modelo')
+plt.legend()
+
+plt.subplot(1, 2, 2)
+plt.plot(history.history['loss'], label='Entrenamiento')
+plt.plot(history.history['val_loss'], label='Validación')
+plt.title('Pérdida del Modelo')
+plt.legend()
+plt.show()
 
 # Construir modelo (Transfer Learning con MobileNetV2)
 base_model = tf.keras.applications.MobileNetV2(input_shape=(128, 128, 3), include_top=False, weights='imagenet')
