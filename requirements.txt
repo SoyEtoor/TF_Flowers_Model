@@ -3,6 +3,7 @@
 #numpy==2.0
 #protobuf===3.9.2
 opencv-python-headless
+tensorflow-datasets
 pandas
 scikit-learn
 matplotlib
