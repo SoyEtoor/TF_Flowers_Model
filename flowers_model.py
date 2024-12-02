@@ -62,10 +62,15 @@ history = model.fit(
 loss, accuracy = model.evaluate(validation_generator)
 print(f'Loss: {loss}, Accuracy: {accuracy}')
 
-# Guardar el modelo en un formato compatible con TensorFlow Serving
+# Guardar en formato TensorFlow Serving
 serving_model_path = os.path.join("flowers-model", "1")
 tf.saved_model.save(model, serving_model_path)
 print(f"Modelo guardado en formato TensorFlow Serving en {serving_model_path}")
+
+# Guardar en formato Keras para pruebas y recarga
+keras_model_path = "flowers-model-keras"
+model.save(keras_model_path)
+print(f"Modelo guardado en formato Keras en {keras_model_path}")
 
 # Predicción de una nueva imagen
 import numpy as np
@@ -78,10 +83,11 @@ def load_and_preprocess_image(img_path):
     img_array = img_array / 255.0  # Normalizar
     return img_array
 
-# Cargar y usar el modelo guardado para predicciones
-loaded_model = tf.keras.models.load_model(serving_model_path)
+# Cargar y usar el modelo guardado en formato Keras para predicciones
+loaded_model = tf.keras.models.load_model(keras_model_path)
 img_path = 'rosa.jpg'  # Cambia esto a la ruta de tu imagen
 img_array = load_and_preprocess_image(img_path)
 predictions = loaded_model.predict(img_array)
 predicted_class = np.argmax(predictions)
 print(f'Predicted class: {predicted_class}')
+
