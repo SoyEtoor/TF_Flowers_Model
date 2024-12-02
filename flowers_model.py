@@ -1,93 +1,123 @@
-import tensorflow as tf
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import os
-import zipfile
-import urllib.request
+import tensorflow as tf
+import tensorflow_datasets as tfds
+import matplotlib.pyplot as plt
+import cv2
+import numpy as np
 
-# Descargar el dataset
+# Download the flower dataset
 url = "https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz"
 dataset_path = tf.keras.utils.get_file("flower_photos.tgz", origin=url, extract=True)
 base_dir = os.path.join(os.path.dirname(dataset_path), 'flower_photos')
 
-# Definir parámetros de preprocesamiento
-batch_size = 32
-img_height = 180
-img_width = 180
+# List of flower classes
+flower_classes = ['daisy', 'dandelion', 'roses', 'sunflowers', 'tulips']
 
-# Crear generadores para los datos de entrenamiento y validación
-train_datagen = ImageDataGenerator(rescale=1./255, validation_split=0.2)
+# Prepare the dataset
+TAMANO_IMG = 100  # Image size
 
-train_generator = train_datagen.flow_from_directory(
-    base_dir,
-    target_size=(img_height, img_width),
-    batch_size=batch_size,
-    class_mode='categorical',
-    subset='training'
+# Create dataset from directory
+def load_and_preprocess_image(file_path, label):
+    # Read the image
+    img = tf.io.read_file(file_path)
+    img = tf.image.decode_jpeg(img, channels=1)  # Convert to grayscale
+    img = tf.image.resize(img, [TAMANO_IMG, TAMANO_IMG])
+    img = img / 255.0  # Normalize
+    return img, label
+
+# Create image dataset
+image_paths = []
+labels = []
+
+for i, flower_class in enumerate(flower_classes):
+    class_dir = os.path.join(base_dir, flower_class)
+    for img_path in os.listdir(class_dir):
+        full_path = os.path.join(class_dir, img_path)
+        image_paths.append(full_path)
+        labels.append(i)
+
+# Convert to TensorFlow dataset
+dataset = tf.data.Dataset.from_tensor_slices((image_paths, labels))
+dataset = dataset.map(load_and_preprocess_image)
+
+# Prepare data for training
+dataset_list = list(dataset)
+X = np.array([img.numpy() for img, _ in dataset_list])
+y = np.array([label.numpy() for _, label in dataset_list])
+
+# One-hot encode the labels
+y = tf.keras.utils.to_categorical(y, num_classes=len(flower_classes))
+
+# Split the data
+split_index = int(len(X) * 0.85)
+X_entrenamiento = X[:split_index]
+X_validacion = X[split_index:]
+y_entrenamiento = y[:split_index]
+y_validacion = y[split_index:]
+
+# Data augmentation
+datagen = tf.keras.preprocessing.image.ImageDataGenerator(
+    rotation_range=30,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    shear_range=15,
+    zoom_range=[0.7, 1.4],
+    horizontal_flip=True,
+    vertical_flip=True
 )
+datagen.fit(X_entrenamiento)
 
-validation_generator = train_datagen.flow_from_directory(
-    base_dir,
-    target_size=(img_height, img_width),
-    batch_size=batch_size,
-    class_mode='categorical',
-    subset='validation'
-)
-
-model = tf.keras.Sequential([
-    tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(img_height, img_width, 3)),
-    tf.keras.layers.MaxPooling2D(),
-    tf.keras.layers.Conv2D(64, (3, 3), activation='relu'),
-    tf.keras.layers.MaxPooling2D(),
-    tf.keras.layers.Conv2D(128, (3, 3), activation='relu'),
-    tf.keras.layers.MaxPooling2D(),
+# Best performing model (CNN)
+model = tf.keras.models.Sequential([
+    tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(TAMANO_IMG, TAMANO_IMG, 1)),
+    tf.keras.layers.MaxPooling2D(2, 2),
+    tf.keras.layers.Conv2D(64, (3,3), activation='relu'),
+    tf.keras.layers.MaxPooling2D(2, 2),
+    tf.keras.layers.Conv2D(128, (3,3), activation='relu'),
+    tf.keras.layers.MaxPooling2D(2, 2),
+    tf.keras.layers.Dropout(0.5),
     tf.keras.layers.Flatten(),
-    tf.keras.layers.Dense(128, activation='relu'),
-    tf.keras.layers.Dense(5, activation='softmax')  # Cambia 5 por el número de clases en tu dataset
+    tf.keras.layers.Dense(250, activation='relu'),
+    tf.keras.layers.Dense(len(flower_classes), activation='softmax')
 ])
 
+# Compile model
 model.compile(optimizer='adam',
               loss='categorical_crossentropy',
               metrics=['accuracy'])
 
-epochs = 10  # Cambia el número de épocas según sea necesario
-history = model.fit(
-    train_generator,
-    steps_per_epoch=train_generator.samples // batch_size,
-    validation_data=validation_generator,
-    validation_steps=validation_generator.samples // batch_size,
-    epochs=epochs
+# Prepare data generator for training
+data_gen_entrenamiento = datagen.flow(X_entrenamiento, y_entrenamiento, batch_size=32)
+
+# Train model
+model.fit(
+    data_gen_entrenamiento,
+    epochs=100, 
+    batch_size=32,
+    validation_data=(X_validacion, y_validacion),
+    steps_per_epoch=int(np.ceil(len(X_entrenamiento) / float(32))),
+    validation_steps=int(np.ceil(len(X_validacion) / float(32)))
 )
 
-# Evaluar el modelo
-loss, accuracy = model.evaluate(validation_generator)
-print(f'Loss: {loss}, Accuracy: {accuracy}')
+# Evaluate the model
+evaluation = model.evaluate(X_validacion, y_validacion)
+print(f"Validation Loss: {evaluation[0]}, Validation Accuracy: {evaluation[1]}")
 
-# Guardar en formato TensorFlow Serving
-serving_model_path = os.path.join("flowers-model", "1")
-tf.saved_model.save(model, serving_model_path)
-print(f"Modelo guardado en formato TensorFlow Serving en {serving_model_path}")
+# Create export directory
+export_dir = 'flowers-model/1'
+os.makedirs(export_dir, exist_ok=True)
 
-# Guardar en formato Keras para pruebas y recarga
-keras_model_path = "flowers-model-keras"
-model.save(keras_model_path)
-print(f"Modelo guardado en formato Keras en {keras_model_path}")
+# Save the model in TensorFlow Serving format
+tf.saved_model.save(model, export_dir)
 
-# Predicción de una nueva imagen
-import numpy as np
-from tensorflow.keras.preprocessing import image
+# Verify the saved model
+print(f"\nModel saved to: {export_dir}")
+print("Contents of the export directory:")
+for root, dirs, files in os.walk(export_dir):
+    for file in files:
+        print(os.path.join(root, file))
 
-def load_and_preprocess_image(img_path):
-    img = image.load_img(img_path, target_size=(img_height, img_width))
-    img_array = image.img_to_array(img)
-    img_array = np.expand_dims(img_array, axis=0)  # Añadir una dimensión para el batch
-    img_array = img_array / 255.0  # Normalizar
-    return img_array
-
-# Cargar y usar el modelo guardado en formato Keras para predicciones
-loaded_model = tf.keras.models.load_model(keras_model_path)
-img_path = 'rosa.jpg'  # Cambia esto a la ruta de tu imagen
-img_array = load_and_preprocess_image(img_path)
-predictions = loaded_model.predict(img_array)
-predicted_class = np.argmax(predictions)
-print(f'Predicted class: {predicted_class}')
-
+# Optional: Save class names for reference
+with open(os.path.join(export_dir, 'class_names.txt'), 'w') as f:
+    for cls in flower_classes:
+        f.write(f"{cls}\n")
