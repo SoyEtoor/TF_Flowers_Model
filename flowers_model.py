@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 import os
-from sklearn.model_selection import train_test_split  # Importación añadida
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.optimizers import Adam
 from tensorflow import keras
@@ -56,7 +56,7 @@ data_gen = ImageDataGenerator(
     shear_range=0.2,
     zoom_range=0.2,
     horizontal_flip=True,
-    brightness_range=[0.8,1.2],
+    brightness_range=[0.8, 1.2],
     fill_mode='nearest'
 )
 
@@ -69,8 +69,10 @@ base_model.trainable = False  # Congela las capas base
 model = keras.Sequential([
     base_model,
     keras.layers.GlobalAveragePooling2D(),
+    keras.layers.BatchNormalization(),  # Añadir capa de normalización por lotes
     keras.layers.Dropout(0.5),  # Regularización para evitar overfitting
     keras.layers.Dense(256, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001)),
+    keras.layers.BatchNormalization(),  # Añadir otra capa de normalización por lotes
     keras.layers.Dropout(0.5),
     keras.layers.Dense(len(folders), activation='softmax')
 ])
@@ -79,16 +81,24 @@ model.compile(optimizer=Adam(learning_rate=0.0001),
               loss='sparse_categorical_crossentropy',
               metrics=['accuracy'])
 
+# Descongelar más capas del modelo base
+base_model.trainable = True
+
+# Configurar cuántas capas se congelan (por ejemplo, descongelar las últimas 20 capas)
+for layer in base_model.layers[:-20]:
+    layer.trainable = False
+
 # Callbacks para el entrenamiento
 early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
 model_checkpoint = ModelCheckpoint('best_model.h5', save_best_only=True, monitor='val_accuracy', mode='max')
+reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=0.00001)
 
 # Entrenar modelo
 history = model.fit(
     train_gen,
     validation_data=(val_images, val_labels),
     epochs=50,
-    callbacks=[early_stopping, model_checkpoint]
+    callbacks=[early_stopping, model_checkpoint, reduce_lr]
 )
 
 # Cargar el mejor modelo
