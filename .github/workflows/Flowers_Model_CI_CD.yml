@@ -26,7 +26,7 @@ jobs:
       run: ls -R
     - name: show dir
       run: ls -la flowers-model/1/
-
+#jbfdsfs
     - name: docker login
       env:
         DOCKER_USER: ${{secrets.DOCKER_USER}}
